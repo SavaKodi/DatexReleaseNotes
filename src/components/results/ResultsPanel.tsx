@@ -1,6 +1,7 @@
 import { useMemo, useRef } from 'react'
 import { useInfiniteReleases } from '@/hooks/useInfiniteReleases'
 import type { SearchFilters, SortOption } from '@/types/search'
+import type { Tables } from '@/types/supabase'
 import { ReleaseCard, ReleaseCardSkeleton } from './ReleaseCard'
 
 type Props = {
@@ -8,9 +9,14 @@ type Props = {
   onSortChange: (s: SortOption) => void
 }
 
+type ReleaseItemRow = Tables<'release_items'> & { releases?: Tables<'releases'> }
+
 export function ResultsPanel({ filters, onSortChange }: Props) {
   const { data, fetchNextPage, hasNextPage, isFetchingNextPage, status, error } = useInfiniteReleases(filters) as any
-  const allItems = useMemo(() => data?.pages.flatMap((p) => p.items) ?? [], [data])
+  const allItems = useMemo<ReleaseItemRow[]>(
+    () => data?.pages.flatMap((p: { items: ReleaseItemRow[] }) => p.items) ?? [],
+    [data]
+  )
   const totalCount = data?.pages?.[0]?.totalCount
 
   const sentinelRef = useRef<HTMLDivElement | null>(null)
@@ -76,7 +82,7 @@ export function ResultsPanel({ filters, onSortChange }: Props) {
 
       {status === 'success' && allItems.length > 0 && (
         <div className="grid grid-cols-1 gap-3">
-          {allItems.map((item) => (
+          {allItems.map((item: ReleaseItemRow) => (
             <ReleaseCard key={item.id} item={item} query={filters.query} />
           ))}
         </div>

@@ -15,7 +15,7 @@ export type QuarterInfo = {
  * - Explicit quarterly markers: "25.01.17 (Q1)", "25.04.11 (Q2)", etc.
  * - Version patterns that indicate major quarterly releases
  */
-export function isQuarterlyRelease(version: string, releaseDate?: string, isQuarterlyFlag?: boolean | null): boolean {
+export function isQuarterlyRelease(_version: string, _releaseDate?: string, isQuarterlyFlag?: boolean | null): boolean {
   // Simplified: only respect the manual/database flag
   return isQuarterlyFlag === true
 }
@@ -23,7 +23,7 @@ export function isQuarterlyRelease(version: string, releaseDate?: string, isQuar
 /**
  * Extracts quarter information from a release version and date
  */
-export function getQuarterInfo(version: string, releaseDate?: string, isQuarterlyFlag?: boolean | null): QuarterInfo | null {
+export function getQuarterInfo(_version: string, releaseDate?: string, isQuarterlyFlag?: boolean | null): QuarterInfo | null {
   // Only show quarter info if manually marked as quarterly
   if (isQuarterlyFlag !== true) {
     return null
