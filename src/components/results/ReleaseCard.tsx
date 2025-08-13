@@ -1,9 +1,7 @@
 import { useMemo, useState } from 'react'
 import { cn } from '@/lib/utils/cn'
 import type { Tables } from '@/types/supabase'
-import { useAbbreviations } from '@/hooks/useAbbreviations'
-import { buildHighlightRegex } from '@/lib/abbreviations/service'
-import { processQuery } from '@/lib/search/query'
+import { getQuarterInfo, getQuarterColorScheme } from '@/lib/utils/releaseUtils'
 
 type ReleaseItemRow = Tables<'release_items'> & { releases?: Tables<'releases'> }
 
@@ -13,22 +11,31 @@ type Props = {
 }
 
 function useHighlighter(query: string) {
-  const { index } = useAbbreviations()
   const regex = useMemo(() => {
-    if (!query) return null
-    const processed = processQuery(query, index)
-    return buildHighlightRegex(processed.highlightTerms)
-  }, [query, index])
+    if (!query.trim()) return null
+    
+    // Simple highlighting using original query terms
+    const terms = query.trim().split(' ').filter(t => t.length > 0)
+    if (terms.length === 0) return null
+    
+    const pattern = terms.map(term => term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')
+    return new RegExp(`(\\b(?:${pattern})\\b)`, 'gi')
+  }, [query])
+  
   return (text: string) => {
     if (!regex) return text
+    
     const parts = text.split(regex)
-    return parts.map((chunk, i) =>
-      regex.test(chunk) ? (
+    return parts.map((chunk, i) => {
+      const isMatch = regex.test(chunk)
+      // Reset regex lastIndex for repeated testing
+      regex.lastIndex = 0
+      return isMatch ? (
         <mark key={i} className="bg-[#6B46C1]/30 text-white rounded-sm px-0.5">{chunk}</mark>
       ) : (
         <span key={i}>{chunk}</span>
       )
-    )
+    })
   }
 }
 
@@ -44,15 +51,41 @@ export function ReleaseCard({ item, query }: Props) {
   const adoUrl = item.azure_link ?? (item.azure_devops_id ? `https://dev.azure.com/DatexCorporation/Datex%20Agile%20Teams/_workitems/edit/${item.azure_devops_id}` : null)
   const date = item.releases?.release_date
   const version = item.releases?.version
+  const isQuarterlyFlag = item.releases?.is_quarterly
   const highlight = useHighlighter(query)
+  const quarterInfo = useMemo(() => {
+    try {
+      return version && date ? getQuarterInfo(version, date, isQuarterlyFlag) : null
+    } catch {
+      return null
+    }
+  }, [version, date, isQuarterlyFlag])
 
   return (
-    <div className="interactive-card rounded-xl border border-zinc-800/70 bg-zinc-900/40 backdrop-blur p-5 transition hover:border-[#6B46C1]/30 hover:shadow-[0_0_0_1px_rgba(107,70,193,0.12)]">
+    <div className={cn(
+      "interactive-card rounded-xl border backdrop-blur p-5 transition",
+      isQuarterlyFlag === true
+        ? "border-green-500/50 bg-green-900/20 hover:border-green-400/60 hover:shadow-[0_0_0_1px_rgba(34,197,94,0.25)]"
+        : "border-zinc-800/70 bg-zinc-900/40 hover:border-[#6B46C1]/30 hover:shadow-[0_0_0_1px_rgba(107,70,193,0.12)]"
+    )}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="text-base font-semibold text-white">
           {highlight(item.title)}
         </div>
         <div className="flex items-center gap-2">
+          {isQuarterlyFlag === true && (
+            <span className="rounded-md border border-green-500/50 bg-green-500/20 backdrop-blur px-2.5 py-1 text-xs font-medium text-green-200">
+              Official Release
+            </span>
+          )}
+          {quarterInfo && (
+            <span className={cn(
+              'rounded-md border backdrop-blur px-2.5 py-1 text-xs font-medium',
+              getQuarterColorScheme(quarterInfo.quarter)
+            )}>
+              {quarterInfo.label}
+            </span>
+          )}
           {version && (
             <span className="rounded-md border border-[#6B46C1]/30 bg-[#6B46C1]/20 backdrop-blur px-2.5 py-1 text-xs text-white">
               {version}

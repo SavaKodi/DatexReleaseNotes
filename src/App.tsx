@@ -6,8 +6,8 @@ import type { SearchFilters } from '@/types/search'
 import { DefaultFilters } from '@/types/search'
 import { SearchPanel } from '@/components/search/SearchPanel'
 import { ResultsPanel } from '@/components/results/ResultsPanel'
-import { AbbreviationAdmin } from '@/components/admin/AbbreviationAdmin'
 import { ParserUploader } from '@/components/admin/ParserUploader'
+import { QuarterlyReleaseManager } from '@/components/admin/QuarterlyReleaseManager'
 import { AdminGate } from '@/components/admin/AdminGate'
 
 function App() {
@@ -65,9 +65,11 @@ function App() {
           ) : (
             <div className="p-4 md:p-6">
               <AdminGate>
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  <AbbreviationAdmin />
+                <div className="max-w-4xl mx-auto space-y-8">
                   <ParserUploader />
+                  <div className="border-t border-zinc-800 pt-8">
+                    <QuarterlyReleaseManager />
+                  </div>
                 </div>
               </AdminGate>
             </div>

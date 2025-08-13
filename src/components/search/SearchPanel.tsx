@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useDebounce } from '@/hooks/useDebounce'
 import type { ComponentFilter, SearchFilters } from '@/types/search'
-import { DefaultFilters } from '@/types/search'
 import { cn } from '@/lib/utils/cn'
 import { useSearchSuggestions } from '@/hooks/useSearchHistory'
 import { useReleasesOptions } from '@/hooks/useReleasesOptions'
@@ -22,6 +21,7 @@ const COMPONENT_OPTIONS: { label: string; value: ComponentFilter }[] = [
 
 export function SearchPanel({ value, onChange, onClear }: Props) {
   const [query, setQuery] = useState(value.query)
+  const [dateError, setDateError] = useState<string | null>(null)
   const debouncedQuery = useDebounce(query, 300)
   const { data: suggestions } = useSearchSuggestions(query)
   const { data: releases } = useReleasesOptions()
@@ -31,12 +31,29 @@ export function SearchPanel({ value, onChange, onClear }: Props) {
     if (debouncedQuery !== value.query) {
       onChange({ ...value, query: debouncedQuery })
     }
-  }, [debouncedQuery, value.query, onChange])
+  }, [debouncedQuery, value, onChange])
+
+  // Validate date range
+  useEffect(() => {
+    if (value.dateFrom && value.dateTo && value.dateFrom > value.dateTo) {
+      setDateError('"From" date cannot be after "To" date')
+    } else {
+      setDateError(null)
+    }
+  }, [value.dateFrom, value.dateTo])
 
   const toggleComponent = (v: ComponentFilter) => {
     const exists = value.components.includes(v)
     const next = exists ? value.components.filter((c) => c !== v) : [...value.components, v]
     onChange({ ...value, components: next })
+  }
+
+  const handleDateFromChange = (dateFrom: string | undefined) => {
+    onChange({ ...value, dateFrom })
+  }
+
+  const handleDateToChange = (dateTo: string | undefined) => {
+    onChange({ ...value, dateTo })
   }
 
   return (
@@ -47,7 +64,7 @@ export function SearchPanel({ value, onChange, onClear }: Props) {
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search release notes (try ‘dg’ for DataGrid)…"
+            placeholder="Search release notes…"
             className="w-full rounded-xl border border-zinc-800 bg-zinc-900/50 backdrop-blur px-4 py-4 text-base md:text-lg text-white placeholder:text-zinc-400 outline-none focus:ring-2 focus:ring-[#6B46C1] transition shadow-[0_0_0_1px_rgba(107,70,193,0.08)]"
           />
           <div className="absolute right-2 top-2">
@@ -132,8 +149,11 @@ export function SearchPanel({ value, onChange, onClear }: Props) {
         <div className="grid grid-cols-2 gap-2">
           <select
             value={value.dateFrom ?? ''}
-            onChange={(e) => onChange({ ...value, dateFrom: e.target.value || undefined })}
-            className="rounded-md border border-zinc-800 bg-zinc-900/50 backdrop-blur px-3 py-2 text-sm text-white outline-none focus:ring-2 focus:ring-[#6B46C1]"
+            onChange={(e) => handleDateFromChange(e.target.value || undefined)}
+            className={cn(
+              "rounded-md border backdrop-blur px-3 py-2 text-sm text-white outline-none focus:ring-2 focus:ring-[#6B46C1] transition",
+              dateError ? "border-red-500 bg-red-900/20" : "border-zinc-800 bg-zinc-900/50"
+            )}
           >
             <option value="">From (any)</option>
             {releases?.map((r) => (
@@ -144,8 +164,11 @@ export function SearchPanel({ value, onChange, onClear }: Props) {
           </select>
           <select
             value={value.dateTo ?? ''}
-            onChange={(e) => onChange({ ...value, dateTo: e.target.value || undefined })}
-            className="rounded-md border border-zinc-800 bg-zinc-900/50 backdrop-blur px-3 py-2 text-sm text-white outline-none focus:ring-2 focus:ring-[#6B46C1]"
+            onChange={(e) => handleDateToChange(e.target.value || undefined)}
+            className={cn(
+              "rounded-md border backdrop-blur px-3 py-2 text-sm text-white outline-none focus:ring-2 focus:ring-[#6B46C1] transition",
+              dateError ? "border-red-500 bg-red-900/20" : "border-zinc-800 bg-zinc-900/50"
+            )}
           >
             <option value="">To (any)</option>
             {releases?.map((r) => (
@@ -155,6 +178,11 @@ export function SearchPanel({ value, onChange, onClear }: Props) {
             ))}
           </select>
         </div>
+        {dateError && (
+          <div className="mt-2 text-sm text-red-400">
+            {dateError}
+          </div>
+        )}
       </div>
 
       <div className="pt-2">

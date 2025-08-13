@@ -1,108 +1,112 @@
 import { supabase } from '@/lib/supabase/client'
-import type { Tables, TablesInsert } from '@/types/supabase'
 
-export type Abbrev = Tables<'abbreviations'>
-
-export async function fetchAbbreviations(): Promise<Abbrev[]> {
-  const { data, error } = await supabase.from('abbreviations').select('*').order('key')
-  if (error) throw error
-  return data ?? []
+export type Abbreviation = {
+  key: string
+  value: string
 }
 
-const defaultAbbreviations: Array<Pick<Abbrev, 'key' | 'value'>> = [
-  { key: 'LP', value: 'License Plate' },
-  { key: 'CLP', value: 'Composite License Plate' },
-  { key: 'FP', value: 'FootPrint' },
-  { key: 'ASN', value: 'Advance Shipping Notice' },
-  { key: 'UDF', value: 'User Defined Fields' },
-]
+let cachedAbbreviations: Abbreviation[] | null = null
+let cacheExpiry: number = 0
 
-export function addDefaults(entries: Abbrev[]): Abbrev[] {
-  const out: Abbrev[] = [...entries]
-  const existing = new Set(entries.map((e) => `${e.key}::${e.value}`.toLowerCase()))
-  for (const d of defaultAbbreviations) {
-    const fingerprint = `${d.key}::${d.value}`.toLowerCase()
-    if (!existing.has(fingerprint)) {
-      out.push({ id: `default:${d.key}`, key: d.key, value: d.value, created_at: new Date(0).toISOString() } as Abbrev)
+export async function getAbbreviations(): Promise<Abbreviation[]> {
+  // Return cached abbreviations if still valid (cache for 5 minutes)
+  if (cachedAbbreviations && Date.now() < cacheExpiry) {
+    return cachedAbbreviations
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from('abbreviations')
+      .select('key, value')
+      .order('key')
+
+    if (error) {
+      console.warn('Failed to load abbreviations:', error)
+      return []
+    }
+
+    cachedAbbreviations = (data || []).map(item => ({
+      key: item.key.trim(),
+      value: item.value.trim()
+    }))
+    cacheExpiry = Date.now() + 5 * 60 * 1000 // Cache for 5 minutes
+
+    return cachedAbbreviations
+  } catch (error) {
+    console.warn('Error loading abbreviations:', error)
+    return []
+  }
+}
+
+export function expandQuery(query: string, abbreviations: Abbreviation[]): string {
+  if (!query || abbreviations.length === 0) return query
+  
+  // Create a map for faster lookups (case-insensitive)
+  const abbrevMap = new Map<string, string>()
+  const reverseMap = new Map<string, string[]>()
+  const wordMap = new Map<string, string[]>() // Map individual words to their abbreviations
+  
+  for (const abbrev of abbreviations) {
+    const key = abbrev.key.toLowerCase().trim()
+    const value = abbrev.value.toLowerCase().trim()
+    
+    abbrevMap.set(key, abbrev.value)
+    
+    // Build reverse map for value -> key expansion
+    if (!reverseMap.has(value)) {
+      reverseMap.set(value, [])
+    }
+    reverseMap.get(value)!.push(abbrev.key)
+    
+    // Build word-level mapping for more precise partial matching
+    const valueWords = value.split(/\s+/)
+    for (const valueWord of valueWords) {
+      const cleanValueWord = valueWord.replace(/[^\w]/g, '')
+      if (cleanValueWord.length >= 3) { // Only consider words of 3+ characters for partial matching
+        if (!wordMap.has(cleanValueWord)) {
+          wordMap.set(cleanValueWord, [])
+        }
+        wordMap.get(cleanValueWord)!.push(abbrev.key)
+      }
     }
   }
-  return out
-}
 
-export async function upsertAbbreviation(input: { id?: string; key: string; value: string }) {
-  const payload: TablesInsert<'abbreviations'> = {
-    id: input.id,
-    key: input.key,
-    value: input.value,
+  // Split query into words and expand each
+  const words = query.split(/\s+/).filter(word => word.length > 0)
+  const expandedWords: string[] = []
+
+  for (const word of words) {
+    const lowerWord = word.toLowerCase()
+    const cleanWord = lowerWord.replace(/[^\w]/g, '') // Remove punctuation for matching
+    
+    // Always include the original word
+    expandedWords.push(word)
+    
+    // Check if word is an abbreviation (exact match)
+    if (abbrevMap.has(cleanWord)) {
+      expandedWords.push(abbrevMap.get(cleanWord)!)
+    }
+    // Check if word matches a full form exactly (reverse expansion)
+    else if (reverseMap.has(cleanWord)) {
+      expandedWords.push(...reverseMap.get(cleanWord)!)
+    }
+    // More conservative partial matching: only for longer words (4+ chars) and exact word matches
+    else if (cleanWord.length >= 4 && wordMap.has(cleanWord)) {
+      expandedWords.push(...wordMap.get(cleanWord)!)
+    }
   }
-  if (input.id) {
-    const { data, error } = await supabase.from('abbreviations').update(payload).eq('id', input.id).select('*')
-    if (error) throw error
-    return data?.[0] as Abbrev
-  }
-  const { data, error } = await supabase.from('abbreviations').insert(payload).select('*')
-  if (error) throw error
-  return data?.[0] as Abbrev
+
+  // Remove duplicates and return
+  return [...new Set(expandedWords)].join(' ')
 }
 
-export async function deleteAbbreviation(id: string) {
-  const { error } = await supabase.from('abbreviations').delete().eq('id', id)
-  if (error) throw error
+export async function expandSearchQuery(query: string): Promise<string> {
+  const abbreviations = await getAbbreviations()
+  return expandQuery(query, abbreviations)
 }
 
-export type AbbrevIndex = {
-  byKey: Map<string, Set<string>>
-  byValue: Map<string, Set<string>>
+// Clear cache when abbreviations are updated
+export function clearAbbreviationCache(): void {
+  cachedAbbreviations = null
+  cacheExpiry = 0
 }
-
-function normalize(text: string) {
-  return text.trim().toLowerCase()
-}
-
-export function buildAbbreviationIndex(entries: Abbrev[]): AbbrevIndex {
-  const byKey = new Map<string, Set<string>>()
-  const byValue = new Map<string, Set<string>>()
-  for (const e of entries) {
-    const key = normalize(e.key)
-    const value = normalize(e.value)
-    if (!byKey.has(key)) byKey.set(key, new Set<string>())
-    byKey.get(key)!.add(value)
-    if (!byValue.has(value)) byValue.set(value, new Set<string>())
-    byValue.get(value)!.add(key)
-  }
-  return { byKey, byValue }
-}
-
-export function expandTermsBidirectionally(terms: string[], index: AbbrevIndex): string[] {
-  const out = new Set<string>()
-  for (const term of terms) {
-    const t = normalize(term)
-    out.add(t)
-    const keyVals = index.byKey.get(t)
-    if (keyVals) for (const v of keyVals) out.add(v)
-    const revKeys = index.byValue.get(t)
-    if (revKeys) for (const k of revKeys) out.add(k)
-  }
-  return Array.from(out)
-}
-
-export function expandSingleTermBidirectionally(term: string, index: AbbrevIndex): string[] {
-  const out = new Set<string>()
-  const t = normalize(term)
-  out.add(t)
-  const keyVals = index.byKey.get(t)
-  if (keyVals) for (const v of keyVals) out.add(v)
-  const revKeys = index.byValue.get(t)
-  if (revKeys) for (const k of revKeys) out.add(k)
-  return Array.from(out)
-}
-
-export function buildHighlightRegex(terms: string[]): RegExp | null {
-  const safeTerms = Array.from(new Set(terms.map((t) => t.trim()).filter(Boolean))).map((t) =>
-    t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-  )
-  if (safeTerms.length === 0) return null
-  return new RegExp(`(\\b(?:${safeTerms.join('|')})\\b)`, 'ig')
-}
-
-

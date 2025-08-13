@@ -11,6 +11,9 @@ export function ParserUploader() {
   const [existingVersions, setExistingVersions] = useState<Record<string, string>>({})
   const [isDeleting, setIsDeleting] = useState(false)
   const [isReplacing, setIsReplacing] = useState(false)
+  const [showDeletePreview, setShowDeletePreview] = useState(false)
+  const [deletePreviewData, setDeletePreviewData] = useState<{versions: string[], items: {version: string, count: number}[]} | null>(null)
+  const [uploadProgress, setUploadProgress] = useState({ current: 0, total: 0, currentVersion: '' })
   const queryClient = useQueryClient()
   const parsedList = useMemo(() => {
     try {
@@ -90,15 +93,58 @@ export function ParserUploader() {
     }
   }
 
+  async function generateDeletePreview() {
+    if (!parsedList || parsedList.length === 0) return
+    setError(null)
+    try {
+      const versions = parsedList.map((p) => p.version)
+      const { data: existingReleases, error: selErr } = await supabase
+        .from('releases')
+        .select('id, version')
+        .in('version', versions)
+      if (selErr) throw selErr
+      
+      const existingVersionsList = (existingReleases ?? []).map((r: any) => r.version)
+      
+      // Get item counts for each version
+      const itemCounts = []
+      for (const release of existingReleases ?? []) {
+        const { count, error: countErr } = await supabase
+          .from('release_items')
+          .select('*', { count: 'exact', head: true })
+          .eq('release_id', (release as any).id)
+        if (!countErr) {
+          itemCounts.push({ version: (release as any).version, count: count || 0 })
+        }
+      }
+      
+      setDeletePreviewData({
+        versions: existingVersionsList,
+        items: itemCounts
+      })
+      setShowDeletePreview(true)
+    } catch (e: any) {
+      setError(e.message ?? 'Failed to generate preview')
+    }
+  }
+
   async function handleSave() {
     if (!parsedList || parsedList.length === 0) return
     setIsSaving(true)
     setError(null)
+    setUploadProgress({ current: 0, total: parsedList.length, currentVersion: '' })
+    
     try {
       const batchId = (globalThis as any).crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`
       const payloads = toSupabasePayloads(parsedList)
-      for (const payload of payloads) {
+      
+      for (let i = 0; i < payloads.length; i++) {
+        const payload = payloads[i]
         const version = payload.release.version
+        
+        // Update progress
+        setUploadProgress({ current: i + 1, total: payloads.length, currentVersion: version })
+        
         let releaseId = existingVersions[version]
         if (!releaseId) {
           const { data: releaseData, error: rErr } = await supabase
@@ -109,12 +155,19 @@ export function ParserUploader() {
           releaseId = (releaseData?.[0] as any)?.id as string
         }
         if (!releaseId) throw new Error('No release ID available')
+        
         const itemsPayload = payload.items.map((i) => ({ ...i, release_id: releaseId!, upload_batch_id: batchId })) as any
         if (itemsPayload.length > 0) {
           const { error: iErr } = await supabase.from('release_items').insert(itemsPayload)
           if (iErr) throw iErr
         }
+        
+        // Small delay to make progress visible and prevent overwhelming the database
+        if (i < payloads.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 100))
+        }
       }
+      
       setRaw('')
       setFileName(null)
       refreshExistingVersions(parsedList.map((p) => p.version))
@@ -124,6 +177,7 @@ export function ParserUploader() {
       setError(e.message ?? 'Failed to save')
     } finally {
       setIsSaving(false)
+      setUploadProgress({ current: 0, total: 0, currentVersion: '' })
     }
   }
 
@@ -204,27 +258,73 @@ export function ParserUploader() {
         onChange={(e) => setRaw(e.target.value)}
       />
       {error && <div className="text-sm text-red-400">{error}</div>}
+      
+      {/* Upload Progress */}
+      {isSaving && uploadProgress.total > 0 && (
+        <div className="space-y-2">
+          <div className="flex justify-between items-center text-sm">
+            <span className="text-zinc-300">
+              Uploading release {uploadProgress.current} of {uploadProgress.total}
+            </span>
+            <span className="text-zinc-400">
+              {Math.round((uploadProgress.current / uploadProgress.total) * 100)}%
+            </span>
+          </div>
+          <div className="w-full bg-zinc-800 rounded-full h-2">
+            <div 
+              className="bg-[#6B46C1] h-2 rounded-full transition-all duration-300 ease-out"
+              style={{ width: `${(uploadProgress.current / uploadProgress.total) * 100}%` }}
+            ></div>
+          </div>
+          {uploadProgress.currentVersion && (
+            <div className="text-xs text-zinc-400">
+              Current: {uploadProgress.currentVersion}
+            </div>
+          )}
+        </div>
+      )}
+      
       <div className="flex gap-2">
         <button
           onClick={handleSave}
           disabled={parsedList.length === 0 || isSaving}
-          className="rounded-md border border-[#6B46C1]/40 bg-[#6B46C1]/20 px-3 py-2 text-sm text-white hover:border-[#6B46C1]/60 transition"
+          className="rounded-md border border-[#6B46C1]/40 bg-[#6B46C1]/20 px-3 py-2 text-sm text-white hover:border-[#6B46C1]/60 transition disabled:opacity-50"
         >
-          Save to DB
+          {isSaving ? (
+            <span className="flex items-center gap-2">
+              <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              Saving...
+            </span>
+          ) : (
+            'Save to DB'
+          )}
         </button>
         <button
-          onClick={handleDeleteExisting}
+          onClick={generateDeletePreview}
           disabled={parsedList.length === 0 || isDeleting}
           className="rounded-md border border-red-900 bg-red-950/40 px-3 py-2 text-sm text-red-200 hover:border-red-800 transition"
         >
-          Delete existing versions
+          Preview delete
         </button>
         <button
           onClick={handleReplaceExisting}
-          disabled={parsedList.length === 0 || isReplacing}
-          className="rounded-md border border-amber-900 bg-amber-950/40 px-3 py-2 text-sm text-amber-200 hover:border-amber-800 transition"
+          disabled={parsedList.length === 0 || isReplacing || isSaving}
+          className="rounded-md border border-amber-900 bg-amber-950/40 px-3 py-2 text-sm text-amber-200 hover:border-amber-800 transition disabled:opacity-50"
         >
-          Replace existing versions
+          {isReplacing ? (
+            <span className="flex items-center gap-2">
+              <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-amber-200" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              Replacing...
+            </span>
+          ) : (
+            'Replace existing versions'
+          )}
         </button>
       </div>
       {parsedList && parsedList.length > 0 && (
@@ -247,6 +347,57 @@ export function ParserUploader() {
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+      
+      {/* Delete Preview Modal */}
+      {showDeletePreview && deletePreviewData && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-6 max-w-md w-full mx-4">
+            <h3 className="text-lg font-semibold text-white mb-4">Delete Preview</h3>
+            
+            {deletePreviewData.versions.length === 0 ? (
+              <p className="text-zinc-400 mb-4">No existing versions found to delete.</p>
+            ) : (
+              <>
+                <p className="text-zinc-300 mb-3">
+                  This will delete <span className="text-red-400 font-semibold">{deletePreviewData.versions.length}</span> version(s) and all their items:
+                </p>
+                <div className="bg-zinc-800 rounded p-3 mb-4 max-h-40 overflow-y-auto">
+                  {deletePreviewData.items.map((item, idx) => (
+                    <div key={idx} className="flex justify-between items-center py-1">
+                      <span className="text-white">{item.version}</span>
+                      <span className="text-zinc-400 text-sm">{item.count} items</span>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-zinc-400 text-sm mb-4">
+                  Total items to delete: <span className="text-red-400">{deletePreviewData.items.reduce((sum, item) => sum + item.count, 0)}</span>
+                </p>
+              </>
+            )}
+            
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => setShowDeletePreview(false)}
+                className="px-3 py-2 text-sm text-zinc-400 hover:text-zinc-200 transition"
+              >
+                Cancel
+              </button>
+              {deletePreviewData.versions.length > 0 && (
+                <button
+                  onClick={() => {
+                    setShowDeletePreview(false)
+                    handleDeleteExisting()
+                  }}
+                  disabled={isDeleting}
+                  className="px-3 py-2 text-sm bg-red-600 text-white rounded hover:bg-red-700 transition"
+                >
+                  {isDeleting ? 'Deleting...' : 'Confirm Delete'}
+                </button>
+              )}
+            </div>
           </div>
         </div>
       )}

@@ -50,35 +50,23 @@ function detectCategory(title: string, description: string): ParsedCategory | nu
 
 function parseDateToken(token: string): { iso: string; version: string } | null {
   const t = token.trim()
-  // dd.mm.yy or dd.mm.yyyy
-  let m = t.match(/^(\d{2})[.\/-](\d{2})[.\/-](\d{2})(\d{2})?$/)
-  if (m) {
-    const dd = Number(m[1])
-    const mm = Number(m[2])
-    const yPart = m[4] ? `${m[3]}${m[4]}` : m[3]
-    // Map 2-digit years into 2000-2099 by default
-    const yyyy = Number(yPart.length === 2 ? `${Number(yPart) + 2000}` : yPart)
-    const iso = new Date(Date.UTC(yyyy, mm - 1, dd)).toISOString()
-    const version = `${String(dd).padStart(2, '0')}.${String(mm).padStart(2, '0')}.${String(yyyy).slice(-2)}`
-    return { iso, version }
-  }
-  // yyyy-mm-dd
-  m = t.match(/^(\d{4})[.\/-](\d{2})[.\/-](\d{2})$/)
+  // Handle yyyy.mm.dd or yyyy-mm-dd
+  let m = t.match(/^(\d{4})[.\/-](\d{1,2})[.\/-](\d{1,2})$/)
   if (m) {
     const yyyy = Number(m[1])
     const mm = Number(m[2])
     const dd = Number(m[3])
     const iso = new Date(Date.UTC(yyyy, mm - 1, dd)).toISOString()
-    return { iso, version: `${dd.toString().padStart(2, '0')}.${mm.toString().padStart(2, '0')}.${String(yyyy).slice(-2)}` }
+    // Normalize version as yy.mm.dd (common release version format)
+    const version = `${String(yyyy).slice(-2)}.${String(mm).padStart(2, '0')}.${String(dd).padStart(2, '0')}`
+    return { iso, version }
   }
-  // mm/dd/yyyy or dd/mm/yyyy - try to normalize into dd.mm.yy by heuristics
-  m = t.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/)
+  // Handle dd.mm.yyyy or mm.dd.yyyy (disambiguate by month/day ranges)
+  m = t.match(/^(\d{1,2})[.\/-](\d{1,2})[.\/-](\d{4})$/)
   if (m) {
-    let a = Number(m[1])
-    let b = Number(m[2])
-    const yPart = m[3]
-    const yyyy = Number(yPart.length === 2 ? `${Number(yPart) + 2000}` : yPart)
-    // Heuristic: if first > 12, then it is dd/mm; if second > 12, then mm/dd
+    const a = Number(m[1])
+    const b = Number(m[2])
+    const yyyy = Number(m[3])
     let dd: number
     let mm: number
     if (a > 12 && b <= 12) {
@@ -88,7 +76,76 @@ function parseDateToken(token: string): { iso: string; version: string } | null 
       dd = b
       mm = a
     } else {
-      // Ambiguous: prefer dd/mm to align with existing convention
+      // Ambiguous: prefer dd.mm.yyyy
+      dd = a
+      mm = b
+    }
+    const iso = new Date(Date.UTC(yyyy, mm - 1, dd)).toISOString()
+    const version = `${String(dd).padStart(2, '0')}.${String(mm).padStart(2, '0')}.${String(yyyy).slice(-2)}`
+    return { iso, version }
+  }
+  // Handle 2-2-2 tokens with heuristics: could be yy.mm.dd or dd.mm.yy
+  m = t.match(/^(\d{2})[.\/-](\d{2})[.\/-](\d{2})$/)
+  if (m) {
+    const a = Number(m[1])
+    const b = Number(m[2])
+    const c = Number(m[3])
+    const toYear = (yy: number) => 2000 + yy
+    // Heuristic:
+    // - If first looks like a year (20-39), interpret as yy.mm.dd
+    // - Else if last looks like a year (20-39), interpret as dd.mm.yy
+    // - Else prefer yy.mm.dd when valid, otherwise fallback to dd.mm.yy
+    if (a >= 20 && a <= 39 && b >= 1 && b <= 12 && c >= 1 && c <= 31) {
+      const yyyy = toYear(a)
+      const mm = b
+      const dd = c
+      const iso = new Date(Date.UTC(yyyy, mm - 1, dd)).toISOString()
+      const version = `${String(a).padStart(2, '0')}.${String(b).padStart(2, '0')}.${String(c).padStart(2, '0')}`
+      return { iso, version }
+    }
+    if (c >= 20 && c <= 39 && b >= 1 && b <= 12 && a >= 1 && a <= 31) {
+      const yyyy = toYear(c)
+      const mm = b
+      const dd = a
+      const iso = new Date(Date.UTC(yyyy, mm - 1, dd)).toISOString()
+      const version = `${String(dd).padStart(2, '0')}.${String(mm).padStart(2, '0')}.${String(c).padStart(2, '0')}`
+      return { iso, version }
+    }
+    // Fallbacks when both look plausible: try yy.mm.dd first
+    const yyFirst = a
+    const mm1 = b
+    const dd1 = c
+    if (mm1 >= 1 && mm1 <= 12 && dd1 >= 1 && dd1 <= 31) {
+      const yyyy = toYear(yyFirst)
+      const iso = new Date(Date.UTC(yyyy, mm1 - 1, dd1)).toISOString()
+      const version = `${String(a).padStart(2, '0')}.${String(b).padStart(2, '0')}.${String(c).padStart(2, '0')}`
+      return { iso, version }
+    }
+    // Else fallback to dd.mm.yy
+    const dd2 = a
+    const mm2 = b
+    const yyyy2 = toYear(c)
+    const iso = new Date(Date.UTC(yyyy2, mm2 - 1, dd2)).toISOString()
+    const version = `${String(dd2).padStart(2, '0')}.${String(mm2).padStart(2, '0')}.${String(c).padStart(2, '0')}`
+    return { iso, version }
+  }
+  // mm/dd/yyyy or dd/mm/yyyy
+  m = t.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/)
+  if (m) {
+    const a = Number(m[1])
+    const b = Number(m[2])
+    const yPart = m[3]
+    const yyyy = Number(yPart.length === 2 ? `${Number(yPart) + 2000}` : yPart)
+    let dd: number
+    let mm: number
+    if (a > 12 && b <= 12) {
+      dd = a
+      mm = b
+    } else if (b > 12 && a <= 12) {
+      dd = b
+      mm = a
+    } else {
+      // Ambiguous: prefer dd/mm
       dd = a
       mm = b
     }
