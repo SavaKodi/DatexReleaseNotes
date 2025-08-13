@@ -1,69 +1,44 @@
-# React + TypeScript + Vite
+### Environment configuration (.env and .env.local)
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+This app uses Vite and Supabase. You must set these variables for the app to work:
 
-Currently, two official plugins are available:
+Required variables:
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- VITE_SUPABASE_URL: Supabase project API URL
+- VITE_SUPABASE_ANON_KEY: Supabase anon public key
 
-## Expanding the ESLint configuration
+Where to set them:
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+- .env: committed defaults for all environments (safe values or placeholders)
+- .env.local: developer-specific overrides (git-ignored). Prefer putting real keys here.
 
-```js
-export default tseslint.config([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+Example .env (checked in):
 
-      // Remove tseslint.configs.recommended and replace with this
-      ...tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      ...tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      ...tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```
+# Generic placeholders – safe to commit
+VITE_SUPABASE_URL=https://YOUR-PROJECT-REF.supabase.co
+VITE_SUPABASE_ANON_KEY=REPLACE_ME
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+Example .env.local (not committed):
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default tseslint.config([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
 ```
+# Real project values – do NOT commit
+VITE_SUPABASE_URL=https://nmopwjbhncmlonpoavxb.supabase.co
+VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...<trimmed>
+```
+
+Windows/WSL notes:
+
+- If running in WSL, place env files inside the project folder (e.g. /mnt/c/Users/.../release-notes-search/.env.local)
+- After changing env files, restart the dev server so Vite picks up new values.
+
+Where these are used in code:
+
+- `src/lib/supabase/client.ts`
+- `src/config/env.ts`
+
+How to verify:
+
+- Open the browser devtools Network tab and look for requests to `/rest/v1/...` – the host should match your VITE_SUPABASE_URL.
+- 401 errors usually indicate wrong URL/key or pointing to the wrong Supabase project.
