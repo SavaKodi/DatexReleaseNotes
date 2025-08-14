@@ -1,5 +1,5 @@
 import { useMemo, useRef } from 'react'
-import { useInfiniteReleases } from '@/hooks/useInfiniteReleases'
+import { useFlexSearchReleases } from '@/hooks/useFlexSearchReleases'
 import type { SearchFilters, SortOption } from '@/types/search'
 import type { Tables } from '@/types/supabase'
 import { ReleaseCard, ReleaseCardSkeleton } from './ReleaseCard'
@@ -12,7 +12,7 @@ type Props = {
 type ReleaseItemRow = Tables<'release_items'> & { releases?: Tables<'releases'> }
 
 export function ResultsPanel({ filters, onSortChange }: Props) {
-  const { data, fetchNextPage, hasNextPage, isFetchingNextPage, status, error } = useInfiniteReleases(filters) as any
+  const { data, fetchNextPage, hasNextPage, isFetchingNextPage, status, error } = useFlexSearchReleases(filters) as any
   const allItems = useMemo<ReleaseItemRow[]>(
     () => data?.pages.flatMap((p: { items: ReleaseItemRow[] }) => p.items) ?? [],
     [data]

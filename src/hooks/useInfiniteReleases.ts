@@ -7,33 +7,57 @@ type ReleaseItemRow = Tables<'release_items'> & { releases?: Tables<'releases'> 
 
 const PAGE_SIZE = 20
 
-function sanitizeSearchTerm(input: string): string {
-  // Clean up search term for both FTS and ILIKE
-  return input.replace(/[%'\\]/g, '').trim()
-}
-
 function applySearchFilter(query: ReturnType<typeof supabase.from>, filters: SearchFilters) {
   if (!filters.query) return query
 
-  const searchTerm = sanitizeSearchTerm(filters.query)
+  const searchTerm = filters.query.trim()
   if (!searchTerm) return query
 
+  // Simple abbreviation lookup - no async, no complexity
+  const abbreviations: Record<string, string> = {
+    'CLP': 'Composite License Plate',
+    'LP': 'License Plate',
+    'ASN': 'Advanced Shipping Notice',
+    'BOL': 'Bill of Lading',
+    'UDF': 'User-Defined Field',
+    'PO': 'Purchase Order',
+    'SN': 'Serial Number',
+    'MW': 'Mobile Web',
+    'FP': 'FootPrint',
+    'IC': 'Inventory Container',
+    'SSCC': 'Serial Shipping Container Code',
+    'UCC': 'UCC-128 labels',
+    'UOM': 'Unit of Measure',
+    'VLot': 'Vendor Lot',
+    'ODATA API': 'Open Data Protocol API'
+  }
+
+  const upperTerm = searchTerm.toUpperCase()
+  const expansion = abbreviations[upperTerm]
+  
   try {
-    // Simple escape for ILIKE - just handle single quotes
-    const escapedTerm = searchTerm.replace(/'/g, "''")
-    
     if (filters.titlesOnly) {
-      // For title-only search, use ILIKE
-      return query.ilike('title', `%${escapedTerm}%`)
+      // Search only in titles
+      if (expansion) {
+        console.log('🔍 Title search with abbreviation:', searchTerm, '→', expansion)
+        return query.or(`title.ilike.%${searchTerm}%,title.ilike.%${expansion}%`)
+      } else {
+        console.log('🔍 Simple title search:', searchTerm)
+        return query.ilike('title', `%${searchTerm}%`)
+      }
+    } else {
+      // Search in both title and description
+      if (expansion) {
+        console.log('🔍 Full search with abbreviation:', searchTerm, '→', expansion)
+        return query.or(`title.ilike.%${searchTerm}%,description.ilike.%${searchTerm}%,title.ilike.%${expansion}%,description.ilike.%${expansion}%`)
+      } else {
+        console.log('🔍 Simple full search:', searchTerm)
+        return query.or(`title.ilike.%${searchTerm}%,description.ilike.%${searchTerm}%`)
+      }
     }
-    
-    // For full search, try a simpler approach - just search title for now
-    // TODO: Add description search once this works reliably
-    return query.ilike('title', `%${escapedTerm}%`)
-    
   } catch (error) {
-    console.warn('Search filter failed, returning original query:', error)
-    return query
+    console.warn('Search failed, using title only fallback:', error)
+    return query.ilike('title', `%${searchTerm}%`)
   }
 }
 
@@ -85,7 +109,7 @@ export function useInfiniteReleases(filters: SearchFilters) {
           .select('*, releases:release_id!inner(*)', { count: 'exact' })
           .range(from, to)
 
-        // Apply search filter first
+        // Apply search filter (simple and synchronous)
         try {
           query = applySearchFilter(query, filters)
         } catch (error) {

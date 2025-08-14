@@ -1,7 +1,9 @@
 import { useMemo, useState } from 'react'
+import Highlighter from 'react-highlight-words'
 import { cn } from '@/lib/utils/cn'
 import type { Tables } from '@/types/supabase'
 import { getQuarterInfo, getQuarterColorScheme } from '@/lib/utils/releaseUtils'
+import { getHighlightTerms } from '@/lib/search/flexsearch'
 
 type ReleaseItemRow = Tables<'release_items'> & { releases?: Tables<'releases'> }
 
@@ -10,33 +12,13 @@ type Props = {
   query: string
 }
 
-function useHighlighter(query: string) {
-  const regex = useMemo(() => {
-    if (!query.trim()) return null
-    
-    // Simple highlighting using original query terms
-    const terms = query.trim().split(' ').filter(t => t.length > 0)
-    if (terms.length === 0) return null
-    
-    const pattern = terms.map(term => term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')
-    return new RegExp(`(\\b(?:${pattern})\\b)`, 'gi')
-  }, [query])
-  
-  return (text: string) => {
-    if (!regex) return text
-    
-    const parts = text.split(regex)
-    return parts.map((chunk, i) => {
-      const isMatch = regex.test(chunk)
-      // Reset regex lastIndex for repeated testing
-      regex.lastIndex = 0
-      return isMatch ? (
-        <mark key={i} className="bg-[#6B46C1]/30 text-white rounded-sm px-0.5">{chunk}</mark>
-      ) : (
-        <span key={i}>{chunk}</span>
-      )
-    })
-  }
+// Custom highlight component with enhanced styling
+function HighlightWrapper({ children }: { children: React.ReactNode }) {
+  return (
+    <mark className="bg-[#6B46C1]/80 text-white font-semibold rounded-sm px-1 shadow-sm">
+      {children}
+    </mark>
+  )
 }
 
 const componentColor: Record<string, string> = {
@@ -52,7 +34,10 @@ export function ReleaseCard({ item, query }: Props) {
   const date = item.releases?.release_date
   const version = item.releases?.version
   const isQuarterlyFlag = item.releases?.is_quarterly
-  const highlight = useHighlighter(query)
+  
+  // Get all search terms including abbreviation expansions
+  const searchWords = getHighlightTerms(query)
+  
   const quarterInfo = useMemo(() => {
     try {
       return version && date ? getQuarterInfo(version, date, isQuarterlyFlag) : null
@@ -70,7 +55,12 @@ export function ReleaseCard({ item, query }: Props) {
     )}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="text-base font-semibold text-white">
-          {highlight(item.title)}
+          <Highlighter
+            highlightTag={HighlightWrapper}
+            searchWords={searchWords}
+            autoEscape={true}
+            textToHighlight={item.title}
+          />
         </div>
         <div className="flex items-center gap-2">
           {isQuarterlyFlag === true && (
@@ -131,7 +121,14 @@ export function ReleaseCard({ item, query }: Props) {
       </div>
 
       <div className="mt-4 text-sm leading-6 text-zinc-200">
-        <div className={cn('line-clamp-3', expanded && 'line-clamp-none')}>{highlight(item.description)}</div>
+        <div className={cn('line-clamp-3', expanded && 'line-clamp-none')}>
+          <Highlighter
+            highlightTag={HighlightWrapper}
+            searchWords={searchWords}
+            autoEscape={true}
+            textToHighlight={item.description}
+          />
+        </div>
         <button
           onClick={() => setExpanded((e) => !e)}
           className="mt-2 text-xs text-[#cbb2ff] hover:text-white transition"
