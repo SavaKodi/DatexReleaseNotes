@@ -5,11 +5,16 @@ import { cn } from '@/lib/utils/cn'
 import { useSearchSuggestions } from '@/hooks/useSearchHistory'
 import { useReleasesOptions } from '@/hooks/useReleasesOptions'
 import { CUTOFF_DATE } from '@/lib/parser/releaseParser'
+import { AISearchToggle } from './AISearchToggle'
+import { AISearchSection } from './AISearchSection'
+import { getAIConfiguration } from '@/lib/ai/config'
+import type { AISearchResult } from '@/types/ai'
 
 type Props = {
   value: SearchFilters
   onChange: (next: SearchFilters) => void
   onClear: () => void
+  onAIResults?: (result: AISearchResult | null, userIssue?: string, currentVersion?: string) => void
 }
 
 const COMPONENT_OPTIONS: { label: string; value: ComponentFilter }[] = [
@@ -19,12 +24,17 @@ const COMPONENT_OPTIONS: { label: string; value: ComponentFilter }[] = [
   { label: 'HTML5 Portal', value: 'html5_portal' },
 ]
 
-export function SearchPanel({ value, onChange, onClear }: Props) {
+export function SearchPanel({ value, onChange, onClear, onAIResults }: Props) {
   const [query, setQuery] = useState(value.query)
   const [dateError, setDateError] = useState<string | null>(null)
+  const [isAIMode, setIsAIMode] = useState(false)
   const debouncedQuery = useDebounce(query, 300)
   const { data: suggestions } = useSearchSuggestions(query)
   const { data: releases } = useReleasesOptions()
+  
+  // Check if AI is configured
+  const aiConfig = getAIConfiguration()
+  const isAIConfigured = aiConfig.isConfigured
 
   // propagate debounced query after render commit
   useEffect(() => {
@@ -56,16 +66,48 @@ export function SearchPanel({ value, onChange, onClear }: Props) {
     onChange({ ...value, dateTo })
   }
 
+  const handleAIToggle = (enabled: boolean) => {
+    setIsAIMode(enabled)
+    if (!enabled) {
+      // When turning off AI mode, clear any AI results
+      onAIResults?.(null as any)
+    }
+  }
+
+  const handleAIResults = (result: AISearchResult, userIssue: string, currentVersion: string) => {
+    onAIResults?.(result, userIssue, currentVersion)
+  }
+
+  const handleAIClear = () => {
+    onAIResults?.(null as any)
+  }
+
   return (
     <div className="space-y-6">
-      <div>
-        <label className="mb-2 block text-sm font-medium text-white/90">Search</label>
+      {/* AI Toggle */}
+      <AISearchToggle 
+        isAIMode={isAIMode} 
+        onToggle={handleAIToggle} 
+        isConfigured={isAIConfigured} 
+      />
+
+      {isAIMode ? (
+        /* AI Search Section */
+        <AISearchSection 
+          onResults={handleAIResults} 
+          onClear={handleAIClear} 
+        />
+      ) : (
+        /* Traditional Search */
+        <>
+          <div>
+            <label className="mb-2 block text-sm font-medium text-white/90">Search</label>
         <div className="relative">
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search release notes…"
-            className="w-full rounded-xl border border-zinc-800 bg-zinc-900/50 backdrop-blur px-4 py-4 text-base md:text-lg text-white placeholder:text-zinc-400 outline-none focus:ring-2 focus:ring-[#6B46C1] transition shadow-[0_0_0_1px_rgba(107,70,193,0.08)]"
+            className="w-full rounded-2xl border border-zinc-800 bg-zinc-900/50 backdrop-blur px-5 py-5 text-lg md:text-xl text-white placeholder:text-zinc-400 outline-none focus:ring-2 focus:ring-[#6B46C1] transition shadow-[0_0_0_1px_rgba(107,70,193,0.08)]"
           />
           <div className="absolute right-2 top-2">
             <div className="group relative inline-block">
@@ -193,6 +235,8 @@ export function SearchPanel({ value, onChange, onClear }: Props) {
           Clear all filters
         </button>
       </div>
+        </>
+      )}
     </div>
   )
 }

@@ -44,11 +44,10 @@ export function expandQuery(query: string, abbreviations: Abbreviation[]): strin
   // Create a map for faster lookups (case-insensitive)
   const abbrevMap = new Map<string, string>()
   const reverseMap = new Map<string, string[]>()
-  const wordMap = new Map<string, string[]>() // Map individual words to their abbreviations
   
   for (const abbrev of abbreviations) {
-    const key = abbrev.key.toLowerCase().trim()
-    const value = abbrev.value.toLowerCase().trim()
+    const key = abbrev.key.toLowerCase()
+    const value = abbrev.value.toLowerCase()
     
     abbrevMap.set(key, abbrev.value)
     
@@ -57,18 +56,6 @@ export function expandQuery(query: string, abbreviations: Abbreviation[]): strin
       reverseMap.set(value, [])
     }
     reverseMap.get(value)!.push(abbrev.key)
-    
-    // Build word-level mapping for more precise partial matching
-    const valueWords = value.split(/\s+/)
-    for (const valueWord of valueWords) {
-      const cleanValueWord = valueWord.replace(/[^\w]/g, '')
-      if (cleanValueWord.length >= 3) { // Only consider words of 3+ characters for partial matching
-        if (!wordMap.has(cleanValueWord)) {
-          wordMap.set(cleanValueWord, [])
-        }
-        wordMap.get(cleanValueWord)!.push(abbrev.key)
-      }
-    }
   }
 
   // Split query into words and expand each
@@ -79,24 +66,26 @@ export function expandQuery(query: string, abbreviations: Abbreviation[]): strin
     const lowerWord = word.toLowerCase()
     const cleanWord = lowerWord.replace(/[^\w]/g, '') // Remove punctuation for matching
     
-    // Always include the original word
-    expandedWords.push(word)
-    
-    // Check if word is an abbreviation (exact match)
+    // Check if word is an abbreviation
     if (abbrevMap.has(cleanWord)) {
-      expandedWords.push(abbrevMap.get(cleanWord)!)
+      expandedWords.push(word, abbrevMap.get(cleanWord)!)
     }
-    // Check if word matches a full form exactly (reverse expansion)
+    // Check if word matches a full form (reverse expansion)
     else if (reverseMap.has(cleanWord)) {
-      expandedWords.push(...reverseMap.get(cleanWord)!)
+      expandedWords.push(word, ...reverseMap.get(cleanWord)!)
     }
-    // More conservative partial matching: only for longer words (4+ chars) and exact word matches
-    else if (cleanWord.length >= 4 && wordMap.has(cleanWord)) {
-      expandedWords.push(...wordMap.get(cleanWord)!)
+    // Check for partial matches in full forms
+    else {
+      expandedWords.push(word)
+      // Add any abbreviations whose full form contains this word
+      for (const [fullForm, abbrevs] of reverseMap.entries()) {
+        if (fullForm.includes(cleanWord) && fullForm !== cleanWord) {
+          expandedWords.push(...abbrevs)
+        }
+      }
     }
   }
 
-  // Remove duplicates and return
   return [...new Set(expandedWords)].join(' ')
 }
 

@@ -131,3 +131,57 @@ body {
 .interactive-card:hover::after {
   opacity: 0.65;
 }
+
+/* AI Assistant button glow animation */
+@keyframes aiGlow {
+  0% {
+    opacity: 0.35;
+    filter: blur(18px);
+  }
+  50% {
+    opacity: 0.6;
+    filter: blur(22px);
+  }
+  100% {
+    opacity: 0.35;
+    filter: blur(18px);
+  }
+}
+
+.ai-glow-layer {
+  position: absolute;
+  inset: -2px;
+  border-radius: 14px;
+  background:
+    radial-gradient(60% 60% at 50% 50%, rgba(107, 70, 193, 0.55), rgba(139, 92, 246, 0.25) 60%, rgba(0, 0, 0, 0) 100%),
+    conic-gradient(from 180deg at 50% 50%, rgba(107, 70, 193, 0.0), rgba(107, 70, 193, 0.35), rgba(107, 70, 193, 0.0));
+  pointer-events: none;
+  animation: aiGlow 2.4s ease-in-out infinite;
+  z-index: -1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ai-glow-layer {
+    animation: none;
+  }
+}
+
+/* Subtle border glow pulse for AI toggle */
+@keyframes borderPulse {
+  0%, 100% {
+    box-shadow: 0 0 0 1px rgba(107, 70, 193, 0.25), 0 0 10px rgba(107, 70, 193, 0.25), inset 0 0 0 1px rgba(107, 70, 193, 0.18);
+  }
+  50% {
+    box-shadow: 0 0 0 1px rgba(107, 70, 193, 0.45), 0 0 18px rgba(107, 70, 193, 0.45), inset 0 0 0 1px rgba(139, 92, 246, 0.28);
+  }
+}
+
+.ai-border-glow {
+  animation: borderPulse 2.8s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ai-border-glow {
+    animation: none;
+  }
+}

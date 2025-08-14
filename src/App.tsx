@@ -9,10 +9,16 @@ import { ResultsPanel } from '@/components/results/ResultsPanel'
 import { ParserUploader } from '@/components/admin/ParserUploader'
 import { QuarterlyReleaseManager } from '@/components/admin/QuarterlyReleaseManager'
 import { AdminGate } from '@/components/admin/AdminGate'
+import { AIConfiguration } from '@/components/admin/AIConfiguration'
+import { AIResultsPanel } from '@/components/ai/AIResultsPanel'
+import type { AISearchResult } from '@/types/ai'
 
 function App() {
   const [filters, setFilters] = useState<SearchFilters>(DefaultFilters)
   const [tab, setTab] = useState<'search' | 'admin'>('search')
+  const [aiResult, setAIResult] = useState<AISearchResult | null>(null)
+  const [aiUserIssue, setAIUserIssue] = useState('')
+  const [aiCurrentVersion, setAICurrentVersion] = useState('')
   return (
     <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
       <AnimatedBackground>
@@ -52,14 +58,36 @@ function App() {
                 <SearchPanel
                   value={filters}
                   onChange={setFilters}
-                  onClear={() => setFilters(DefaultFilters)}
+                  onClear={() => {
+                    setFilters(DefaultFilters)
+                    setAIResult(null)
+                  }}
+                  onAIResults={(result, userIssue, currentVersion) => {
+                    if (result) {
+                      setAIResult(result)
+                      setAIUserIssue(userIssue || '')
+                      setAICurrentVersion(currentVersion || '')
+                    } else {
+                      setAIResult(null)
+                      setAIUserIssue('')
+                      setAICurrentVersion('')
+                    }
+                  }}
                 />
               }
               right={
-                <ResultsPanel
-                  filters={filters}
-                  onSortChange={(s) => setFilters((f) => ({ ...f, sort: s }))}
-                />
+                aiResult ? (
+                  <AIResultsPanel
+                    result={aiResult}
+                    userIssue={aiUserIssue}
+                    currentVersion={aiCurrentVersion}
+                  />
+                ) : (
+                  <ResultsPanel
+                    filters={filters}
+                    onSortChange={(s) => setFilters((f) => ({ ...f, sort: s }))}
+                  />
+                )
               }
             />
           ) : (
@@ -69,6 +97,9 @@ function App() {
                   <ParserUploader />
                   <div className="border-t border-zinc-800 pt-8">
                     <QuarterlyReleaseManager />
+                  </div>
+                  <div className="border-t border-zinc-800 pt-8">
+                    <AIConfiguration />
                   </div>
                 </div>
               </AdminGate>
