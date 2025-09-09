@@ -171,13 +171,15 @@ export function parseReleaseNotes(text: string): ParsedRelease {
   for (let i = 0; i < Math.min(lines.length, 100); i += 1) {
     const l = lines[i].trim()
     if (!l) continue
-    // Consider only very short lines that look like a version/date token or prefixed with 'version'/'release'
-    if (l.length <= 20) {
-      const m = l.match(/^(?:version|release|footprint\s*version)\s*[:\-]?\s*(\d{2}[.\/-]\d{2}[.\/-](\d{2})(\d{2})?)$/i)
-      const n = l.match(/^(\d{2}[.\/-]\d{2}[.\/-](\d{2})(\d{2})?)$/)
-      const token = (m?.[1] ?? n?.[1])?.trim()
-      if (token) headerCandidates.push({ line: token, idx: i })
-    }
+    // Consider short lines that look like a version/date token or prefixed with 'version'/'release'
+    // Also support dashed inline headers like: ----- 25.08.15 -----
+    const dashed = l.match(/^-+\s*(\d{2}[.\/-]\d{2}[.\/-](\d{2})(\d{2})?)\s*-+$/)
+    const m = l.length <= 32
+      ? l.match(/^(?:version|release|footprint\s*version)\s*[:\-]?\s*(\d{2}[.\/-]\d{2}[.\/-](\d{2})(\d{2})?)$/i)
+      : null
+    const n = l.length <= 24 ? l.match(/^(\d{2}[.\/-]\d{2}[.\/-](\d{2})(\d{2})?)$/) : null
+    const token = (dashed?.[1] ?? m?.[1] ?? n?.[1])?.trim()
+    if (token) headerCandidates.push({ line: token, idx: i })
   }
   if (headerCandidates.length > 0) {
     // Choose the first header-like candidate; these are more trustworthy than inline tokens
@@ -357,14 +359,16 @@ function extractReleaseSections(text: string): { headerIdx: number; dateLine: st
     .replace(/\u00a0/g, ' ')
   const lines = normalized.split('\n')
   const dateLineRegex = /^(\d{1,2})[.\/-](\d{1,2})[.\/-](\d{2})(\d{2})?$/
+  const inlineDashedHeader = /^-+\s*(\d{1,2}[.\/-]\d{1,2}[.\/-](\d{2})(\d{2})?)\s*-+$/
   const headers: number[] = []
   for (let i = 0; i < lines.length; i += 1) {
     const l = lines[i].trim()
     if (!l) continue
-    if (dateLineRegex.test(l)) {
+    // Detect plain date line, or date wrapped with dashes on the same line
+    if (dateLineRegex.test(l) || inlineDashedHeader.test(l)) {
       const hasDashAbove = i - 1 >= 0 && isDashLine(lines[i - 1])
       const hasDashBelow = i + 1 < lines.length && isDashLine(lines[i + 1])
-      if (hasDashAbove || hasDashBelow) headers.push(i)
+      if (hasDashAbove || hasDashBelow || inlineDashedHeader.test(l)) headers.push(i)
     }
   }
   if (headers.length === 0) {
@@ -383,7 +387,9 @@ function extractReleaseSections(text: string): { headerIdx: number; dateLine: st
   for (let h = 0; h < headers.length; h += 1) {
     const idx = headers[h]
     const nextIdx = h + 1 < headers.length ? headers[h + 1] : lines.length
-    const dateLine = lines[idx].trim()
+    let dateLine = lines[idx].trim()
+    const inlineMatch = dateLine.match(inlineDashedHeader)
+    if (inlineMatch) dateLine = inlineMatch[1]
 
     // Determine where content starts: skip immediate dash line below if present
     let start = idx + 1
@@ -462,5 +468,3 @@ export function parseMultipleReleaseNotes(text: string): ParsedRelease[] {
 export function toSupabasePayloads(releases: ParsedRelease[]) {
   return releases.map((r) => toSupabasePayload(r))
 }
-
-

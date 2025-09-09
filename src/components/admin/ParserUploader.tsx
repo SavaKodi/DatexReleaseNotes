@@ -171,8 +171,9 @@ export function ParserUploader() {
       setRaw('')
       setFileName(null)
       refreshExistingVersions(parsedList.map((p) => p.version))
-      // Refresh any cached queries showing release items
-      queryClient.invalidateQueries({ queryKey: ['release-items'] })
+      // Refresh caches so Search page reflects new/updated releases
+      queryClient.invalidateQueries({ queryKey: ['flexsearch-release-items'] })
+      queryClient.invalidateQueries({ queryKey: ['releases-options'] })
     } catch (e: any) {
       setError(e.message ?? 'Failed to save')
     } finally {
@@ -198,7 +199,8 @@ export function ParserUploader() {
       const { error: delReleaseErr } = await supabase.from('releases').delete().in('id', ids)
       if (delReleaseErr) throw delReleaseErr
       setExistingVersions({})
-      queryClient.invalidateQueries({ queryKey: ['release-items'] })
+      queryClient.invalidateQueries({ queryKey: ['flexsearch-release-items'] })
+      queryClient.invalidateQueries({ queryKey: ['releases-options'] })
     } catch (e: any) {
       setError(e.message ?? 'Failed to delete')
     } finally {
@@ -404,5 +406,4 @@ export function ParserUploader() {
     </div>
   )
 }
-
 

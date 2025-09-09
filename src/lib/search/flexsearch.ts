@@ -20,15 +20,15 @@ const descriptionIndex = new Index({
 // Cache for search results
 let isIndexed = false
 let lastIndexedData: ReleaseItemRow[] = []
+let lastIndexedIdsKey = ''
 
 /**
  * Index data in FlexSearch for precise searching
  */
 export function indexData(data: ReleaseItemRow[]): void {
-  // Only re-index if data has changed
-  if (isIndexed && data.length === lastIndexedData.length) {
-    return
-  }
+  // Only re-index if data set changed (by identity, not just length)
+  const idsKey = data.map(d => d.id).sort().join('|')
+  if (isIndexed && idsKey === lastIndexedIdsKey) return
 
   console.log('🔍 FlexSearch: Indexing', data.length, 'items')
   
@@ -44,6 +44,7 @@ export function indexData(data: ReleaseItemRow[]): void {
   
   isIndexed = true
   lastIndexedData = data
+  lastIndexedIdsKey = idsKey
 }
 
 /**
@@ -184,5 +185,6 @@ export function resetFlexSearchIndex(): void {
   descriptionIndex.clear()
   isIndexed = false
   lastIndexedData = []
+  lastIndexedIdsKey = ''
   console.log('🔍 FlexSearch: Index reset')
 }

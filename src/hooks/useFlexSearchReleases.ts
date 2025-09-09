@@ -80,8 +80,23 @@ export function useFlexSearchReleases(filters: SearchFilters) {
           console.log('🔍 FlexSearch filtered to', searchFilteredData.length, 'items')
         }
 
-        // Handle relevance sorting for FlexSearch results
-        if (filters.sort === 'relevance' && filters.query?.trim()) {
+        // Apply explicit client-side sorting when not using relevance
+        if (filters.sort !== 'relevance') {
+          const dir = filters.sort === 'oldest' ? 1 : -1
+          searchFilteredData = [...searchFilteredData].sort((a, b) => {
+            const da = (a as any).releases?.release_date ?? ''
+            const db = (b as any).releases?.release_date ?? ''
+            // Compare YYYY-MM-DD strings lexicographically for stability
+            if (da < db) return -1 * dir
+            if (da > db) return 1 * dir
+            // Tiebreaker by created_at to keep deterministic ordering
+            const ca = a.created_at ?? ''
+            const cb = b.created_at ?? ''
+            if (ca < cb) return -1 * dir
+            if (ca > cb) return 1 * dir
+            return 0
+          })
+        } else if (filters.query?.trim()) {
           // FlexSearch already returns results in relevance order
           console.log('🔍 Using FlexSearch relevance ordering')
         }
