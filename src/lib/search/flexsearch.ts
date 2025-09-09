@@ -19,7 +19,6 @@ const descriptionIndex = new Index({
 
 // Cache for search results
 let isIndexed = false
-let lastIndexedData: ReleaseItemRow[] = []
 let lastIndexedIdsKey = ''
 
 /**
@@ -43,7 +42,6 @@ export function indexData(data: ReleaseItemRow[]): void {
   })
   
   isIndexed = true
-  lastIndexedData = data
   lastIndexedIdsKey = idsKey
 }
 
@@ -184,7 +182,6 @@ export function resetFlexSearchIndex(): void {
   titleIndex.clear()
   descriptionIndex.clear()
   isIndexed = false
-  lastIndexedData = []
   lastIndexedIdsKey = ''
   console.log('🔍 FlexSearch: Index reset')
 }
